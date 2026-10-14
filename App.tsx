@@ -1,127 +1,90 @@
 import React, { useEffect, useState } from 'react';
-import { SafeAreaView, View, Text, Button, StyleSheet, FlatList, TouchableOpacity, StatusBar } from 'react-native';
-import TrackPlayer, { State, usePlaybackState, Capability } from 'react-native-track-player';
-import RNFS from 'react-native-fs';
+import { FlatList, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import TrackPlayer, {
+  Capability,
+  State,
+  usePlaybackState,
+  useActiveTrack,
+} from 'react-native-track-player';
+import { buscarCanciones, pedirPermiso } from './src/scanMusic';
 
 export default function App() {
-  const playbackState = usePlaybackState();
-  const [songs, setSongs] = useState<any[]>([]);
-  const [currentTrack, setCurrentTrack] = useState<string | null>(null);
+  const [canciones, setCanciones] = useState<any[]>([]);
+  const estado = usePlaybackState();
+  const actual = useActiveTrack();
 
   useEffect(() => {
-    const initPlayerAndScan = async () => {
+    (async () => {
       try {
         await TrackPlayer.setupPlayer();
-        
-        // Configuración para la pantalla de bloqueo y notificaciones
-        await TrackPlayer.updateOptions({
-          capabilities: [
-            Capability.Play,
-            Capability.Pause,
-            Capability.SkipToNext,
-            Capability.SkipToPrevious,
-            Capability.Stop,
-          ],
-          compactCapabilities: [Capability.Play, Capability.Pause],
-          notificationCapabilities: [
-            Capability.Play,
-            Capability.Pause,
-            Capability.SkipToNext,
-            Capability.SkipToPrevious,
-          ],
-        });
-      } catch (e) {
-        // Ya inicializado
+      } catch {
+        // ya estaba inicializado (por recarga rápida)
       }
-      scanMusic();
-    };
-    initPlayerAndScan();
+      await TrackPlayer.updateOptions({
+        capabilities: [
+          Capability.Play,
+          Capability.Pause,
+          Capability.SkipToNext,
+          Capability.SkipToPrevious,
+          Capability.SeekTo,
+        ],
+      });
+      if (await pedirPermiso()) {
+        setCanciones(await buscarCanciones());
+      }
+    })();
   }, []);
 
-  const scanMusic = async () => {
-    // Carpetas comunes en Android
-    const dirsToScan = [
-      `${RNFS.ExternalStorageDirectoryPath}/Music`,
-      `${RNFS.ExternalStorageDirectoryPath}/Download`
-    ];
-
-    let foundSongs: any[] = [];
-
-    for (const dir of dirsToScan) {
-      try {
-        const files = await RNFS.readDir(dir);
-        const audioFiles = files.filter(f => f.name.endsWith('.mp3'));
-        
-        const mappedSongs = audioFiles.map((file) => ({
-          id: file.path,
-          url: `file://${file.path}`,
-          title: file.name.replace('.mp3', ''),
-          artist: 'Local',
-        }));
-        
-        foundSongs = [...foundSongs, ...mappedSongs];
-      } catch (err) {
-        console.log(`No se pudo leer el directorio: ${dir}`);
-      }
-    }
-
-    setSongs(foundSongs);
-    if (foundSongs.length > 0) {
-      await TrackPlayer.reset();
-      await TrackPlayer.add(foundSongs);
-    }
-  };
-
-  const playSong = async (track: any, index: number) => {
-    await TrackPlayer.skip(index);
+  const reproducir = async (indice: number) => {
+    await TrackPlayer.reset();
+    await TrackPlayer.add(canciones);
+    await TrackPlayer.skip(indice);
     await TrackPlayer.play();
-    setCurrentTrack(track.title);
   };
 
-  const togglePlayback = async () => {
-    const current = await TrackPlayer.getState();
-    if (current === State.Playing) {
-      await TrackPlayer.pause();
-    } else {
-      await TrackPlayer.play();
-    }
-  };
+  const sonando = estado.state === State.Playing;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
-      <Text style={styles.title}>Mi Música</Text>
-      
-      <View style={styles.card}>
-        <Text style={styles.trackName}>
-          {currentTrack ? currentTrack : "Nada reproduciéndose"}
+    <SafeAreaProvider>
+      <SafeAreaView style={s.root}>
+        <Text style={s.titulo}>Mi música</Text>
+        <Text style={{ color: '#888', paddingHorizontal: 16 }}>
+          Encontradas: {canciones.length}
         </Text>
-        <Button 
-          title={playbackState.state === State.Playing ? "Pausar" : "Reproducir"} 
-          onPress={togglePlayback} 
-          disabled={!currentTrack}
+        <FlatList
+          data={canciones}
+          keyExtractor={(c) => c.id}
+          renderItem={({ item, index }) => (
+            <TouchableOpacity style={s.fila} onPress={() => reproducir(index)}>
+              <Text style={[s.texto, actual?.id === item.id && s.activa]} numberOfLines={1}>
+                {item.title}
+              </Text>
+            </TouchableOpacity>
+          )}
         />
-      </View>
-
-      <FlatList
-        data={songs}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item, index }) => (
-          <TouchableOpacity style={styles.songItem} onPress={() => playSong(item, index)}>
-            <Text style={styles.songTitle}>{item.title}</Text>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={<Text style={{color: 'gray', textAlign: 'center'}}>Buscando música o carpeta vacía...</Text>}
-      />
-    </SafeAreaView>
+        <View style={s.barra}>
+          <Text style={s.texto} numberOfLines={1}>{actual?.title ?? 'Nada sonando'}</Text>
+          <View style={s.controles}>
+            <TouchableOpacity onPress={() => TrackPlayer.skipToPrevious()}><Text style={s.btn}>⏮</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => (sonando ? TrackPlayer.pause() : TrackPlayer.play())}>
+              <Text style={s.btn}>{sonando ? '⏸' : '▶️'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => TrackPlayer.skipToNext()}><Text style={s.btn}>⏭</Text></TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: '#121212' },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: 20 },
-  card: { padding: 20, backgroundColor: '#1e1e1e', borderRadius: 10, marginBottom: 20 },
-  trackName: { color: '#1db954', fontSize: 16, textAlign: 'center', marginBottom: 10 },
-  songItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#333' },
-  songTitle: { color: '#fff', fontSize: 16 }
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#121212' },
+  titulo: { color: '#fff', fontSize: 24, fontWeight: '700', padding: 16 },
+  fila: { paddingVertical: 14, paddingHorizontal: 16 },
+  texto: { color: '#ddd', fontSize: 16 },
+  activa: { color: '#1db954', fontWeight: '700' },
+  barra: { padding: 16, backgroundColor: '#1e1e1e' },
+  controles: { flexDirection: 'row', justifyContent: 'center', gap: 32, marginTop: 8 },
+  btn: { fontSize: 28, color: '#fff' },
 });

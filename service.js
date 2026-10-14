@@ -1,18 +1,10 @@
 import TrackPlayer, { Event } from 'react-native-track-player';
 
-module.exports = async function() {
-  // Cuando tocas "Reproducir" en la notificación o pantalla de bloqueo
+module.exports = async function () {
   TrackPlayer.addEventListener(Event.RemotePlay, () => TrackPlayer.play());
-
-  // Cuando tocas "Pausa"
   TrackPlayer.addEventListener(Event.RemotePause, () => TrackPlayer.pause());
-
-  // Cuando tocas "Siguiente"
   TrackPlayer.addEventListener(Event.RemoteNext, () => TrackPlayer.skipToNext());
-
-  // Cuando tocas "Anterior"
   TrackPlayer.addEventListener(Event.RemotePrevious, () => TrackPlayer.skipToPrevious());
-  
-  // Cuando descartas la notificación para cerrar el reproductor
-  TrackPlayer.addEventListener(Event.RemoteStop, () => TrackPlayer.destroy());
+  TrackPlayer.addEventListener(Event.RemoteStop, () => TrackPlayer.stop());
+  TrackPlayer.addEventListener(Event.RemoteSeek, (e) => TrackPlayer.seekTo(e.position));
 };
